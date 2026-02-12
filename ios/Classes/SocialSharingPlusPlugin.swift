@@ -306,12 +306,7 @@ public class SocialSharingPlusPlugin: NSObject, FlutterPlugin {
     ///   - isVideo: Whether the media is a video.
     ///   - completion: Completion handler with success status.
     private func saveMediaToPhotoLibrary(fileUrl: URL, isVideo: Bool, completion: @escaping (Bool) -> Void) {
-        PHPhotoLibrary.requestAuthorization { status in
-            guard status == .authorized || status == .limited else {
-                completion(false)
-                return
-            }
-
+        let performSave: () -> Void = {
             PHPhotoLibrary.shared().performChanges({
                 if isVideo {
                     PHAssetChangeRequest.creationRequestForAssetFromVideo(atFileURL: fileUrl)
@@ -322,6 +317,24 @@ public class SocialSharingPlusPlugin: NSObject, FlutterPlugin {
                 }
             }) { success, error in
                 completion(success)
+            }
+        }
+
+        if #available(iOS 14, *) {
+            PHPhotoLibrary.requestAuthorization(for: .addOnly) { status in
+                guard status == .authorized || status == .limited else {
+                    completion(false)
+                    return
+                }
+                performSave()
+            }
+        } else {
+            PHPhotoLibrary.requestAuthorization { status in
+                guard status == .authorized else {
+                    completion(false)
+                    return
+                }
+                performSave()
             }
         }
     }
