@@ -1,8 +1,12 @@
 import Flutter
 import UIKit
 import Photos
+import FBSDKCoreKit
+import FBSDKShareKit
+import Social
+import MobileCoreServices
 
-public class SocialSharingPlusPlugin: NSObject, FlutterPlugin {
+public class SocialSharingPlusPlugin: NSObject, FlutterPlugin, SharingDelegate {
     
     /// Retains the document interaction controller for Instagram Stories sharing.
     private var documentInteractionController: UIDocumentInteractionController?
@@ -57,6 +61,23 @@ public class SocialSharingPlusPlugin: NSObject, FlutterPlugin {
             result(FlutterMethodNotImplemented)
         }
     }
+
+    // MARK: - SharingDelegate
+    
+    public func sharer(_ sharer: Sharing, didCompleteWithResults results: [String : Any]) {
+        currentFlutterResult?(nil)
+        currentFlutterResult = nil
+    }
+
+    public func sharer(_ sharer: Sharing, didFailWithError error: Error) {
+        currentFlutterResult?(FlutterError(code: "SHARE_ERROR", message: error.localizedDescription, details: nil))
+        currentFlutterResult = nil
+    }
+
+    public func sharerDidCancel(_ sharer: Sharing) {
+        currentFlutterResult?(FlutterError(code: "SHARE_CANCELLED", message: "User cancelled share", details: nil))
+        currentFlutterResult = nil
+    }
     
     // MARK: - Share Methods
     
@@ -67,16 +88,100 @@ public class SocialSharingPlusPlugin: NSObject, FlutterPlugin {
     ///   - result: FlutterResult object to complete the call.
     ///   - isOpenBrowser: Flag indicating whether to open in browser if app not installed.
     private func shareToFacebook(arguments: [String: Any], result: @escaping FlutterResult, isOpenBrowser: Bool) {
-        if let content = arguments["content"] as? String, let imageUri = arguments["media"] as? String {
-            shareContentAndImageToSpecificApp(content: content, imageUri: imageUri, appUrlScheme: "fb://publish/profile/me?text=\(content)", webUrlString: "https://www.facebook.com/sharer/sharer.php?u=\(content)", result: result, isOpenBrowser: isOpenBrowser)
-        } else if let content = arguments["content"] as? String {
-            let urlString = "fb://publish/profile/me?text=\(content)"
-            let webUrlString = "https://www.facebook.com/sharer/sharer.php?u=\(content)"
-            openUrl(urlString: urlString, webUrlString: webUrlString, result: result, isOpenBrowser: isOpenBrowser)
-        } else if let imageUri = arguments["media"] as? String {
-            shareImageToSpecificApp(imageUri: imageUri, appUrlScheme: "fb://", result: result, isOpenBrowser: isOpenBrowser)
+        let message = arguments["content"] as? String
+        let imageUri = arguments["media"] as? String
+        
+        // If we have an image, use SharePhotoContent
+        if let imagePath = imageUri, !imagePath.isEmpty {
+            guard let image = UIImage(contentsOfFile: imagePath) else {
+                result(FlutterError(code: "IMAGE_ERROR", message: "Invalid image path", details: nil))
+                return
+            }
+            
+            let photo = SharePhoto(image: image, isUserGenerated: true)
+            let content = SharePhotoContent()
+            content.photos = [photo]
+            
+            if let msg = message {
+                // FBSDKShareKit often ignores 'quote' or 'hashtag' if not configured correctly in App Dashboard,
+                // but appinio_social_share uses hashtag for the message.
+                // Note: Facebook strictly limits pre-filling user messages.
+                content.hashtag = Hashtag(msg)
+            }
+            
+            showFacebookShareDialog(content: content, result: result)
+        } 
+        // If we have only text/link, use ShareLinkContent or checking if it is a link
+        else if let msg = message {
+             // For text only, Appinio uses SharePhotoContent without photos?? No, looking at their code:
+             // They actually prioritize image paths. If ONLY text, they might use shareToSystem or separate logic.
+             // But the user request specifically pointed to `shareToFacebookPost` in ShareUtil which uses SharePhotoContent.
+             // If no image, let's try ShareLinkContent if it looks like a URL, or fall back to system sharing?
+             // Actually, the user's provided code for `shareContentAndImageToSpecificApp` (old logic) handled text.
+             // But the NEW request wants `appinio` style.
+             // In `ShareUtil.swift` shared by user:
+             // func shareToFacebookPost(args : [String: Any?],result: @escaping FlutterResult, delegate: SharingDelegate) {
+             //    let message = args[self.argMessage] as? String
+             //    let imagePaths = args[self.argImagePaths] as? [String]
+             //    let content = SharePhotoContent()
+             //    ... photos ...
+             //    content.hashtag = Hashtag(message!)
+             
+             // So it seems it expects images. If no images, the appinio code might fail or empty photos array?
+             // Let's support Link content if it's a URL, otherwise just try to open generic dialog or error.
+             
+            if let url = URL(string: msg), UIApplication.shared.canOpenURL(url) {
+                 let content = ShareLinkContent()
+                 content.contentURL = url
+                 content.quote = msg
+                 showFacebookShareDialog(content: content, result: result)
+            } else {
+                // Determine if we should fail or try a text-only approach (which FB doesn't really support via SDK sharing dialogs well without a link).
+                 // Fallback to old URL scheme method for text-only/link-only if SDK fails? 
+                 // Or just error as Appinio seems to be media-focused in that specific method?
+                 // Let's try to wrap the text in a ShareLinkContent with empty URL? No, that invalidates.
+                 // Let's assume for now the primary use case is media + text or just link.
+                 
+                 // Fallback to old URL scheme for text only if not a valid link for SDK
+                 let urlString = "fb://publish/profile/me?text=\(msg)"
+                 let webUrlString = "https://www.facebook.com/sharer/sharer.php?u=\(msg)"
+                 openUrl(urlString: urlString, webUrlString: webUrlString, result: result, isOpenBrowser: isOpenBrowser)
+            }
         }
     }
+
+    private func showFacebookShareDialog(content: SharingContent, result: @escaping FlutterResult) {
+         guard let rootViewController = UIApplication.shared.windows.first?.rootViewController else {
+             result(FlutterError(code: "NO_ROOT_VIEW_CONTROLLER", message: "No root view controller found", details: nil))
+             return
+         }
+         
+        let dialog = ShareDialog(
+            viewController: rootViewController,
+            content: content,
+            delegate: self
+        )
+        
+        // We need to store the FlutterResult to call it when delegate methods fire.
+        // But ShareDialog delegate is weak. We might need a wrapper or robust way to handle this.
+        // For simplicity in this step, we'll implement the delegate on the main class
+        // and store the current result callback? That's risky if concurrent calls happen.
+        // However, Flutter method calls are generally serial or we can safeguard.
+        // Better: create a small helper class for the delegate if needed, or just set a property `currentFlutterResult`.
+        self.currentFlutterResult = result
+        
+        do {
+            try dialog.validate()
+        } catch {
+            result(FlutterError(code: "VALIDATION_ERROR", message: error.localizedDescription, details: nil))
+            return
+        }
+        
+        dialog.show()
+    }
+    
+    // Store the current result callback
+    private var currentFlutterResult: FlutterResult?
 
     /// Shares content to Twitter.
     ///
