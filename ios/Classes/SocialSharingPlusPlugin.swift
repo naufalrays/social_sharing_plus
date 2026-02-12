@@ -1,7 +1,11 @@
 import Flutter
 import UIKit
+import Photos
 
 public class SocialSharingPlusPlugin: NSObject, FlutterPlugin {
+    
+    /// Retains the document interaction controller for Instagram Stories sharing.
+    private var documentInteractionController: UIDocumentInteractionController?
     
     // MARK: - FlutterPlugin Protocol Methods
     
@@ -43,6 +47,12 @@ public class SocialSharingPlusPlugin: NSObject, FlutterPlugin {
             shareToReddit(arguments: arguments, result: result, isOpenBrowser: isOpenBrowser)
         case "shareToTelegram":
             shareToTelegram(arguments: arguments, result: result, isOpenBrowser: isOpenBrowser)
+        case "shareToInstagram":
+            shareToInstagram(arguments: arguments, result: result, isOpenBrowser: isOpenBrowser)
+        case "shareToInstagramStories":
+            shareToInstagramStories(arguments: arguments, result: result, isOpenBrowser: isOpenBrowser)
+        case "shareToInstagramReels":
+            shareToInstagramReels(arguments: arguments, result: result, isOpenBrowser: isOpenBrowser)
         default:
             result(FlutterMethodNotImplemented)
         }
@@ -147,6 +157,172 @@ public class SocialSharingPlusPlugin: NSObject, FlutterPlugin {
             openUrl(urlString: urlString, webUrlString: webUrlString, result: result, isOpenBrowser: isOpenBrowser)
         } else if let imageUri = arguments["media"] as? String {
             shareImageToSpecificApp(imageUri: imageUri, appUrlScheme: "tg://", result: result, isOpenBrowser: isOpenBrowser)
+        }
+    }
+
+    // MARK: - Instagram Share Methods
+
+    /// Shares media to Instagram.
+    /// Opens Instagram with the media, allowing the user to choose between Feed, Stories, Reels, or Direct.
+    ///
+    /// On iOS, this saves the media to the photo library and opens Instagram.
+    /// Instagram will let the user choose what to do with the most recent photo/video.
+    ///
+    /// - Parameters:
+    ///   - arguments: Arguments dictionary containing media path.
+    ///   - result: FlutterResult object to complete the call.
+    ///   - isOpenBrowser: Flag indicating whether to open in browser if app not installed.
+    private func shareToInstagram(arguments: [String: Any], result: @escaping FlutterResult, isOpenBrowser: Bool) {
+        guard let mediaPath = arguments["media"] as? String else {
+            result(FlutterError(code: "NO_MEDIA", message: "Instagram requires media (image or video) to share", details: nil))
+            return
+        }
+
+        let fileUrl = URL(fileURLWithPath: mediaPath)
+        let isVideo = ["mp4", "mov", "avi"].contains(fileUrl.pathExtension.lowercased())
+
+        // Save media to photo library, then open Instagram
+        saveMediaToPhotoLibrary(fileUrl: fileUrl, isVideo: isVideo) { success in
+            DispatchQueue.main.async {
+                if success {
+                    let instagramUrl = "instagram://library?AssetPath=\(mediaPath)"
+                    if let url = URL(string: instagramUrl), UIApplication.shared.canOpenURL(url) {
+                        UIApplication.shared.open(url, options: [:], completionHandler: nil)
+                        result(nil)
+                    } else if isOpenBrowser {
+                        if let webUrl = URL(string: "https://www.instagram.com/") {
+                            UIApplication.shared.open(webUrl, options: [:], completionHandler: nil)
+                        }
+                        result(nil)
+                    } else {
+                        result(FlutterError(code: "APP_NOT_INSTALLED", message: "Instagram is not installed", details: nil))
+                    }
+                } else {
+                    result(FlutterError(code: "SAVE_ERROR", message: "Failed to save media to photo library", details: nil))
+                }
+            }
+        }
+    }
+
+    /// Shares media directly to Instagram Stories using UIDocumentInteractionController.
+    ///
+    /// - Parameters:
+    ///   - arguments: Arguments dictionary containing media path.
+    ///   - result: FlutterResult object to complete the call.
+    ///   - isOpenBrowser: Flag indicating whether to open in browser if app not installed.
+    private func shareToInstagramStories(arguments: [String: Any], result: @escaping FlutterResult, isOpenBrowser: Bool) {
+        guard let mediaPath = arguments["media"] as? String else {
+            result(FlutterError(code: "NO_MEDIA", message: "Instagram Stories requires media (image or video) to share", details: nil))
+            return
+        }
+
+        let instagramStoriesUrl = URL(string: "instagram-stories://share")!
+        if UIApplication.shared.canOpenURL(instagramStoriesUrl) {
+            let fileUrl = URL(fileURLWithPath: mediaPath)
+            let isVideo = ["mp4", "mov", "avi"].contains(fileUrl.pathExtension.lowercased())
+
+            guard let mediaData = try? Data(contentsOf: fileUrl) else {
+                result(FlutterError(code: "FILE_ERROR", message: "Unable to read media file", details: nil))
+                return
+            }
+
+            let pasteboardItems: [[String: Any]]
+            if isVideo {
+                pasteboardItems = [["com.instagram.sharedSticker.backgroundVideo": mediaData]]
+            } else {
+                pasteboardItems = [["com.instagram.sharedSticker.backgroundImage": mediaData]]
+            }
+
+            let pasteboardOptions: [UIPasteboard.OptionsKey: Any] = [
+                .expirationDate: Date(timeIntervalSinceNow: 300)
+            ]
+
+            UIPasteboard.general.setItems(pasteboardItems, options: pasteboardOptions)
+            UIApplication.shared.open(instagramStoriesUrl, options: [:], completionHandler: nil)
+            result(nil)
+        } else if isOpenBrowser {
+            if let webUrl = URL(string: "https://www.instagram.com/") {
+                UIApplication.shared.open(webUrl, options: [:], completionHandler: nil)
+            }
+            result(nil)
+        } else {
+            result(FlutterError(code: "APP_NOT_INSTALLED", message: "Instagram is not installed", details: nil))
+        }
+    }
+
+    /// Shares video to Instagram Reels.
+    ///
+    /// - Parameters:
+    ///   - arguments: Arguments dictionary containing video path.
+    ///   - result: FlutterResult object to complete the call.
+    ///   - isOpenBrowser: Flag indicating whether to open in browser if app not installed.
+    private func shareToInstagramReels(arguments: [String: Any], result: @escaping FlutterResult, isOpenBrowser: Bool) {
+        guard let mediaPath = arguments["media"] as? String else {
+            result(FlutterError(code: "NO_MEDIA", message: "Instagram Reels requires a video to share", details: nil))
+            return
+        }
+
+        let fileUrl = URL(fileURLWithPath: mediaPath)
+        let isVideo = ["mp4", "mov", "avi"].contains(fileUrl.pathExtension.lowercased())
+
+        if !isVideo {
+            result(FlutterError(code: "INVALID_MEDIA", message: "Instagram Reels requires a video file (mp4, mov)", details: nil))
+            return
+        }
+
+        let instagramReelsUrl = URL(string: "instagram-reels://share")!
+        if UIApplication.shared.canOpenURL(instagramReelsUrl) {
+            guard let videoData = try? Data(contentsOf: fileUrl) else {
+                result(FlutterError(code: "FILE_ERROR", message: "Unable to read video file", details: nil))
+                return
+            }
+
+            let pasteboardItems: [[String: Any]] = [
+                ["com.instagram.sharedSticker.backgroundVideo": videoData]
+            ]
+            let pasteboardOptions: [UIPasteboard.OptionsKey: Any] = [
+                .expirationDate: Date(timeIntervalSinceNow: 300)
+            ]
+
+            UIPasteboard.general.setItems(pasteboardItems, options: pasteboardOptions)
+            UIApplication.shared.open(instagramReelsUrl, options: [:], completionHandler: nil)
+            result(nil)
+        } else if isOpenBrowser {
+            if let webUrl = URL(string: "https://www.instagram.com/") {
+                UIApplication.shared.open(webUrl, options: [:], completionHandler: nil)
+            }
+            result(nil)
+        } else {
+            result(FlutterError(code: "APP_NOT_INSTALLED", message: "Instagram is not installed", details: nil))
+        }
+    }
+
+    // MARK: - Helper Methods
+
+    /// Saves media (image or video) to the photo library.
+    ///
+    /// - Parameters:
+    ///   - fileUrl: URL of the media file.
+    ///   - isVideo: Whether the media is a video.
+    ///   - completion: Completion handler with success status.
+    private func saveMediaToPhotoLibrary(fileUrl: URL, isVideo: Bool, completion: @escaping (Bool) -> Void) {
+        PHPhotoLibrary.requestAuthorization { status in
+            guard status == .authorized || status == .limited else {
+                completion(false)
+                return
+            }
+
+            PHPhotoLibrary.shared().performChanges({
+                if isVideo {
+                    PHAssetChangeRequest.creationRequestForAssetFromVideo(atFileURL: fileUrl)
+                } else {
+                    if let image = UIImage(contentsOfFile: fileUrl.path) {
+                        PHAssetChangeRequest.creationRequestForAsset(from: image)
+                    }
+                }
+            }) { success, error in
+                completion(success)
+            }
         }
     }
     

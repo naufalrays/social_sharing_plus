@@ -104,7 +104,33 @@ This `<provider>` tag specifies the authorization of your file provider and what
 <details>
 <summary>iOS (click to expand)</summary>
 
-No special configuration is needed for iOS.
+**Add URL Schemes for app detection**
+
+To check if social media apps are installed on the device, you need to add `LSApplicationQueriesSchemes` to your `Info.plist` file:
+
+```xml
+<key>LSApplicationQueriesSchemes</key>
+<array>
+    <string>instagram</string>
+    <string>instagram-stories</string>
+    <string>instagram-reels</string>
+    <string>fb</string>
+    <string>twitter</string>
+    <string>linkedin</string>
+    <string>whatsapp</string>
+    <string>reddit</string>
+    <string>tg</string>
+</array>
+```
+
+**Photo Library Access (required for Instagram sharing)**
+
+Instagram sharing on iOS works by saving media to the photo library first. Add the following to your `Info.plist`:
+
+```xml
+<key>NSPhotoLibraryUsageDescription</key>
+<string>Grant media access to share images and videos to Instagram.</string>
+```
 
 </details>
 
