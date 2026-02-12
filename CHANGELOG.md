@@ -1,3 +1,11 @@
+# 1.3.0
+
+- Add Instagram support with specialized sharing functionality
+- Instagram now shows options for Feed, Stories, Reels, and Direct Message when sharing
+- **Important**: Instagram requires media (image or video) - text-only sharing is not supported
+- Improved Instagram sharing with proper intent handling for single and multiple media
+- Updated documentation with Instagram-specific usage examples and requirements
+
 # 1.2.3
 
 - fix: social platform public docs [(#9)](https://github.com/bedirhanssaglam/social_sharing_plus/pull/9)

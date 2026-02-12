@@ -2,7 +2,7 @@
   <img src="https://github.com/user-attachments/assets/c4ae675c-af94-44c3-b24b-b46db3a07eff" />
 </p>
 
-`social_sharing_plus` is a Flutter plugin that allows you to share content, images and videos to various social media platforms like Facebook, Twitter, LinkedIn, WhatsApp, Reddit, and Telegram. This package provides a simple and unified interface for sharing across different apps, handling the nuances and differences of each platform.
+`social_sharing_plus` is a Flutter plugin that allows you to share content, images and videos to various social media platforms like Facebook, Twitter, LinkedIn, WhatsApp, Reddit, Telegram, and Instagram. This package provides a simple and unified interface for sharing across different apps, handling the nuances and differences of each platform.
 
 🚀 **Exciting News!** You can now share multiple images and videos with text(optional)! 📸🎥
 
@@ -54,6 +54,15 @@ You need to add the following queries to your app's AndroidManifest.xml file to 
         <package android:name="com.whatsapp" />
         <!-- Query for Telegram -->
         <package android:name="org.telegram.messenger" />
+        <!-- Query for Instagram -->
+        <package android:name="com.instagram.android" />
+        <!-- Instagram Stories & Reels custom intents -->
+        <intent>
+            <action android:name="com.instagram.share.ADD_TO_STORY" />
+        </intent>
+        <intent>
+            <action android:name="com.instagram.share.ADD_TO_REEL" />
+        </intent>
     </queries>
 
     <application>
@@ -101,10 +110,10 @@ No special configuration is needed for iOS.
 
 ---
 
-```yaml                    
+```yaml
 dependencies:
   social_sharing_plus: ^1.2.3
-```       
+```
 
 ### Usage
 
@@ -138,29 +147,74 @@ isMultipleShare
       );
 ```
 
+#### Instagram Specific Usage
+
+**⚠️ Important:** Instagram requires media (image or video) to share. Text-only sharing is not supported.
+
+```dart
+// Share to Instagram (shows chooser popup: Feed, Stories, Reels, Direct)
+await SocialSharingPlus.shareToSocialMedia(
+  SocialPlatform.instagram,
+  'Your caption here', // Optional caption
+  media: '/path/to/image.jpg', // Required!
+  isOpenBrowser: true,
+);
+
+// Share directly to Instagram Stories
+await SocialSharingPlus.shareToSocialMedia(
+  SocialPlatform.instagramStories,
+  'Your caption here',
+  media: '/path/to/image.jpg',
+  isOpenBrowser: true,
+);
+
+// Share directly to Instagram Reels (requires video)
+await SocialSharingPlus.shareToSocialMedia(
+  SocialPlatform.instagramReels,
+  'Your caption here',
+  media: '/path/to/video.mp4', // Must be video!
+  isOpenBrowser: true,
+);
+```
+
+**Available Instagram platforms:**
+
+| Platform                          | Description                                                           |
+| --------------------------------- | --------------------------------------------------------------------- |
+| `SocialPlatform.instagram`        | Shows Android chooser popup with Feed, Stories, Reels, Direct options |
+| `SocialPlatform.instagramStories` | Shares directly to Instagram Stories                                  |
+| `SocialPlatform.instagramReels`   | Shares directly to Instagram Reels (requires video)                   |
+
+**Supported formats:**
+
+- Images: JPG, PNG
+- Videos: MP4, MOV
+
+````
+
 ## Properties
 
 - `shareToSocialMedia`:
 
-| Properties              | Required | Default                   | Description                                                                                                                                                                   |
-| ----------------------- | -------- | ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- 
-|                                                                                                                                                                    |
-| socialPlatform      | true     |                           | Platform you want to share on                                                                                                                                              |
-| content        | true     |      | Any text you want to share                                                                                           
-| media                   | false     |      | The image or video you want to share                                                                                                 |
-| isOpenBrowser             | false    | `true` | If the relevant application is not installed, it redirects to the link (browser) of the relevant application. |
-| onAppNotInstalled          | false    |             | This method works if the application is not installed and the `isOpenBrowser` value is set to false. (For example: Showing a Snackbar like "The application is not installed on your device."...) |
+| Properties        | Required | Default | Description                                                                                                                                                                                       |
+| ----------------- | -------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+|                   |
+| socialPlatform    | true     |         | Platform you want to share on                                                                                                                                                                     |
+| content           | true     |         | Any text you want to share                                                                                                                                                                        |
+| media             | false    |         | The image or video you want to share                                                                                                                                                              |
+| isOpenBrowser     | false    | `true`  | If the relevant application is not installed, it redirects to the link (browser) of the relevant application.                                                                                     |
+| onAppNotInstalled | false    |         | This method works if the application is not installed and the `isOpenBrowser` value is set to false. (For example: Showing a Snackbar like "The application is not installed on your device."...) |
 
 - `shareToSocialMediaWithMultipleMedia`:
 
-| Properties              | Required | Default                   | Description                                                                                                                                                                   |
-| ----------------------- | -------- | ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- 
-|                                                                                                                                                                    |
-| socialPlatform      | true     |                           | Platform you want to share on                                                                                                                                              |
-| content        | false     |      | Any text you want to share                                                                                           
-| media                   | true     |      | The image or video you want to share                                                                                                 |
-| isOpenBrowser             | false    | `true` | If the relevant application is not installed, it redirects to the link (browser) of the relevant application. |
-| onAppNotInstalled          | false    |             | This method works if the application is not installed and the `isOpenBrowser` value is set to false. (For example: Showing a Snackbar like "The application is not installed on your device."...) |
+| Properties        | Required | Default | Description                                                                                                                                                                                       |
+| ----------------- | -------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+|                   |
+| socialPlatform    | true     |         | Platform you want to share on                                                                                                                                                                     |
+| content           | false    |         | Any text you want to share                                                                                                                                                                        |
+| media             | true     |         | The image or video you want to share                                                                                                                                                              |
+| isOpenBrowser     | false    | `true`  | If the relevant application is not installed, it redirects to the link (browser) of the relevant application.                                                                                     |
+| onAppNotInstalled | false    |         | This method works if the application is not installed and the `isOpenBrowser` value is set to false. (For example: Showing a Snackbar like "The application is not installed on your device."...) |
 
 ### Screenshots
 
@@ -171,7 +225,7 @@ isMultipleShare
                 <a>
                     <img src="https://github.com/user-attachments/assets/880ffe55-335f-4214-bafa-6a25843c9807" width="100"/>
                 </a>
-            </td>            
+            </td>
             <td style="text-align: center">
                 <a>
                     <img src="https://github.com/user-attachments/assets/126a422a-2bb0-4f4d-8e6b-4779944de4bc" width="100"/>
@@ -186,7 +240,7 @@ isMultipleShare
                 <a>
                     <img src="https://github.com/user-attachments/assets/096a4daa-3cc0-4d17-b627-9b0f82c11108" width="100" />
                 </a>
-            </td>          
+            </td>
             <td style="text-align: center">
                 <a>
                     <img src="https://github.com/user-attachments/assets/517f094d-1005-4a2d-93cc-995534688db2" width="100" />
@@ -196,19 +250,19 @@ isMultipleShare
                 <a>
                     <img src="https://github.com/bedirhanssaglam/social_sharing_plus/assets/105479937/b63be060-fa90-47b5-9f25-06ff31d3a1d9" width="100" />
                 </a>
-            </td> 
+            </td>
             <td style="text-align: center">
                 <a>
                     <img src="https://github.com/user-attachments/assets/4b9ecdba-6bcd-4d11-a3e9-8a252b9a4d8b" width="100" />
                 </a>
-            </td>    
+            </td>
         </tr>
-        <tr>        
+        <tr>
             <td style="text-align: center">
                 <a>
                     <img src="https://github.com/user-attachments/assets/f9ddef3e-27f5-45b5-8c53-53d3813ffe3d" width="100"/>
                 </a>
-            </td>             
+            </td>
             <td style="text-align: center">
                 <a>
                     <img src="https://github.com/bedirhanssaglam/social_sharing_plus/assets/105479937/ff960417-5627-4e90-a3c1-7a719868de62" width="100"/>
@@ -223,7 +277,7 @@ isMultipleShare
                 <a>
                     <img src="https://github.com/user-attachments/assets/d0aaf839-0c6a-46cf-be1d-acf94f4e24d7" width="100" />
                 </a>
-            </td>    
+            </td>
             <td style="text-align: center">
                 <a>
                     <img src="https://github.com/bedirhanssaglam/social_sharing_plus/assets/105479937/fafa227a-f89a-4cab-9b7f-2bd13daf7987" width="100" />
@@ -233,21 +287,21 @@ isMultipleShare
                 <a>
                     <img src="https://github.com/user-attachments/assets/f7831ed7-5d1c-4fbb-b8ca-181d6c59f6ac" width="100" />
                 </a>
-            </td>      
+            </td>
             <td style="text-align: center">
                 <a>
                     <img src="https://github.com/user-attachments/assets/80dee235-2d57-4c71-9920-018c3795b726" width="100" />
                 </a>
             </td>
-        </tr>     
+        </tr>
     </table>
 </div>
 
 ### Dart Version
 
 ```yaml
-  sdk: '>=2.17.0 <4.0.0'
-```
+sdk: ">=2.17.0 <4.0.0"
+````
 
 ### Issues
 
