@@ -29,11 +29,38 @@ class SharePage extends StatefulWidget {
 
 class _SharePageState extends State<SharePage> {
   final TextEditingController _controller = TextEditingController();
-  static const List<SocialPlatform> _platforms = SocialPlatform.values;
+
+  /// Non-Instagram platforms
+  static const List<SocialPlatform> _generalPlatforms = [
+    SocialPlatform.facebook,
+    SocialPlatform.linkedin,
+    SocialPlatform.reddit,
+    SocialPlatform.twitter,
+    SocialPlatform.whatsapp,
+    SocialPlatform.telegram,
+    SocialPlatform.instagram,
+  ];
+
+  /// Instagram-specific platforms (direct sharing without chooser popup)
+  static const List<SocialPlatform> _instagramPlatforms = [
+    SocialPlatform.instagramStories,
+    SocialPlatform.instagramReels,
+  ];
 
   final ImagePicker _picker = ImagePicker();
   String? _mediaPath;
   List<String> _mediaPaths = [];
+
+  String _instagramLabel(SocialPlatform platform) {
+    switch (platform) {
+      case SocialPlatform.instagramStories:
+        return 'Instagram Stories';
+      case SocialPlatform.instagramReels:
+        return 'Instagram Reels';
+      default:
+        return platform.name.capitalize;
+    }
+  }
 
   Future<void> _pickImage() async {
     final XFile? pickedFile =
@@ -72,40 +99,55 @@ class _SharePageState extends State<SharePage> {
     });
   }
 
-  Future<void> _share(
-    SocialPlatform platform, {
-    bool isMultipleShare = false,
-  }) async {
+  Future<void> _share(SocialPlatform platform) async {
     final String content = _controller.text;
-    isMultipleShare
-        ? await SocialSharingPlus.shareToSocialMediaWithMultipleMedia(
-            platform,
-            media: _mediaPaths,
-            content: content,
-            isOpenBrowser: true,
-            onAppNotInstalled: () {
-              ScaffoldMessenger.of(context)
-                ..hideCurrentSnackBar()
-                ..showSnackBar(SnackBar(
-                  content:
-                      Text('${platform.name.capitalize} is not installed.'),
-                ));
-            },
-          )
-        : await SocialSharingPlus.shareToSocialMedia(
-            platform,
-            content,
-            media: _mediaPath,
-            isOpenBrowser: true,
-            onAppNotInstalled: () {
-              ScaffoldMessenger.of(context)
-                ..hideCurrentSnackBar()
-                ..showSnackBar(SnackBar(
-                  content:
-                      Text('${platform.name.capitalize} is not installed.'),
-                ));
-            },
-          );
+
+    // Check if we should use multiple share (if _mediaPaths has items)
+    final bool shouldUseMultipleShare = _mediaPaths.isNotEmpty;
+
+    // Check if Instagram requires media
+    final bool isInstagram = platform == SocialPlatform.instagram ||
+        platform == SocialPlatform.instagramStories ||
+        platform == SocialPlatform.instagramReels;
+
+    if (isInstagram && _mediaPath == null && _mediaPaths.isEmpty) {
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(const SnackBar(
+          content: Text('Instagram requires media (image or video) to share.'),
+        ));
+      return;
+    }
+
+    if (shouldUseMultipleShare) {
+      await SocialSharingPlus.shareToSocialMediaWithMultipleMedia(
+        platform,
+        media: _mediaPaths,
+        content: content,
+        isOpenBrowser: true,
+        onAppNotInstalled: () {
+          ScaffoldMessenger.of(context)
+            ..hideCurrentSnackBar()
+            ..showSnackBar(SnackBar(
+              content: Text('${platform.name.capitalize} is not installed.'),
+            ));
+        },
+      );
+    } else {
+      await SocialSharingPlus.shareToSocialMedia(
+        platform,
+        content,
+        media: _mediaPath,
+        isOpenBrowser: true,
+        onAppNotInstalled: () {
+          ScaffoldMessenger.of(context)
+            ..hideCurrentSnackBar()
+            ..showSnackBar(SnackBar(
+              content: Text('${platform.name.capitalize} is not installed.'),
+            ));
+        },
+      );
+    }
   }
 
   @override
@@ -129,6 +171,50 @@ class _SharePageState extends State<SharePage> {
                   ),
                 ),
               ),
+              // Show selected media info
+              if (_mediaPath != null || _mediaPaths.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 24),
+                  child: Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.blue.shade50,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.blue.shade200),
+                    ),
+                    child: Column(
+                      children: [
+                        if (_mediaPath != null)
+                          Text(
+                            '✓ Single media selected',
+                            style: TextStyle(
+                              color: Colors.blue.shade900,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        if (_mediaPaths.isNotEmpty)
+                          Text(
+                            '✓ ${_mediaPaths.length} media files selected',
+                            style: TextStyle(
+                              color: Colors.blue.shade900,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        const SizedBox(height: 4),
+                        TextButton(
+                          onPressed: () {
+                            setState(() {
+                              _mediaPath = null;
+                              _mediaPaths = [];
+                            });
+                          },
+                          child: const Text('Clear Selection'),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              const SizedBox(height: 16),
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
@@ -162,15 +248,41 @@ class _SharePageState extends State<SharePage> {
                   ],
                 ),
               ),
-              ..._platforms.map(
-                (SocialPlatform platform) => ElevatedButton(
-                  onPressed: () => _share(
-                    platform,
-                    isMultipleShare: true,
+              ..._generalPlatforms.map(
+                (SocialPlatform platform) => Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  child: ElevatedButton(
+                    onPressed: () => _share(platform),
+                    child: Text('Share to ${platform.name.capitalize}'),
                   ),
-                  child: Text('Share to ${platform.name.capitalize}'),
                 ),
               ),
+              const SizedBox(height: 16),
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 24),
+                child: Divider(),
+              ),
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 8),
+                child: Text(
+                  'Instagram (Direct)',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+              ..._instagramPlatforms.map(
+                (SocialPlatform platform) => Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  child: ElevatedButton.icon(
+                    onPressed: () => _share(platform),
+                    icon: const Icon(Icons.camera_alt),
+                    label: Text(_instagramLabel(platform)),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 24),
             ],
           ),
         ),
