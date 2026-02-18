@@ -6,7 +6,7 @@ import FBSDKShareKit
 import Social
 import MobileCoreServices
 
-public class SocialSharingPlusPlugin: NSObject, FlutterPlugin, SharingDelegate, UIDocumentInteractionControllerDelegate {
+public class SocialSharingPlusPlugin: NSObject, FlutterPlugin, SharingDelegate {
     
     /// Retains the document interaction controller for Instagram Stories sharing.
     private var documentInteractionController: UIDocumentInteractionController?
@@ -253,23 +253,32 @@ public class SocialSharingPlusPlugin: NSObject, FlutterPlugin, SharingDelegate, 
                 result(FlutterError(code: "NO_ROOT_VIEW_CONTROLLER", message: "No root view controller found", details: nil))
                 return
             }
+
+            // LinkedIn's iOS share extension often fails with file URLs and UIDocumentInteractionController.
+            // Try sharing the raw image Data directly. This bypasses file system issues.
+            var activityItems: [Any] = [imageData]
             
-            // UIActivityViewController often fails to pass the image to LinkedIn.
-            // Try UIDocumentInteractionController (Open In...) which is more specific for file handoff.
-            documentInteractionController = UIDocumentInteractionController(url: tempFileURL)
-            documentInteractionController?.uti = "public.jpeg"
-            documentInteractionController?.delegate = self
-            
-            let couldOpen = documentInteractionController?.presentOpenInMenu(from: CGRect.zero, in: rootViewController.view, animated: true) ?? false
-            
-            if !couldOpen {
-                 result(FlutterError(code: "NO_APP_FOUND", message: "No app found to open this image", details: nil))
-            } else {
-                // We cannot easily know if sharing completed successfully with UIDocumentInteractionController
-                // so we return nil immediately or rely on delegate.
-                // For now, return nil to allow Flutter to continue.
-                result(nil)
+            let activityVC = UIActivityViewController(activityItems: activityItems, applicationActivities: nil)
+            activityVC.excludedActivityTypes = [.assignToContact, .addToReadingList]
+
+            if let popover = activityVC.popoverPresentationController {
+                popover.sourceView = rootViewController.view
+                popover.sourceRect = CGRect(x: rootViewController.view.bounds.midX, y: rootViewController.view.bounds.midY, width: 0, height: 0)
+                popover.permittedArrowDirections = []
             }
+
+            activityVC.completionWithItemsHandler = { _, completed, _, error in
+                // Clean up temp file (which we created from the image data)
+                try? FileManager.default.removeItem(at: tempFileURL)
+                
+                if let error = error {
+                    result(FlutterError(code: "SHARE_ERROR", message: error.localizedDescription, details: nil))
+                } else {
+                    result(nil)
+                }
+            }
+
+            rootViewController.present(activityVC, animated: true, completion: nil)
         }
         }
         // Text/URL only — use LinkedIn URL scheme directly
