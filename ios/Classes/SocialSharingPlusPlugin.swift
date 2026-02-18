@@ -204,41 +204,59 @@ public class SocialSharingPlusPlugin: NSObject, FlutterPlugin, SharingDelegate {
     /// Shares content to LinkedIn.
     ///
     /// - Parameters:
-    ///   - arguments: Arguments dictionary containing content URI.
+    ///   - arguments: Arguments dictionary containing content and media URIs.
     ///   - result: FlutterResult object to complete the call.
     ///   - isOpenBrowser: Flag indicating whether to open in browser if app not installed.
     private func shareToLinkedIn(arguments: [String: Any], result: @escaping FlutterResult, isOpenBrowser: Bool) {
-        if let imageUri = arguments["media"] as? String, !imageUri.isEmpty {
-            guard let image = UIImage(contentsOfFile: imageUri) else {
+        let content = arguments["content"] as? String
+        let imageUri = arguments["media"] as? String
+
+        // If we have an image, use UIActivityViewController (share sheet)
+        // because LinkedIn's URL scheme does not support direct image sharing.
+        if let imagePath = imageUri, !imagePath.isEmpty {
+            guard let image = UIImage(contentsOfFile: imagePath) else {
                 result(FlutterError(code: "IMAGE_ERROR", message: "Invalid image path", details: nil))
                 return
             }
-            
+
             var activityItems: [Any] = [image]
-            if let content = arguments["content"] as? String {
-                activityItems.append(content)
+            if let text = content, !text.isEmpty {
+                activityItems.insert(text, at: 0)
             }
-            
+
             guard let rootViewController = UIApplication.shared.windows.first?.rootViewController else {
                 result(FlutterError(code: "NO_ROOT_VIEW_CONTROLLER", message: "No root view controller found", details: nil))
                 return
             }
-            
-            let activityViewController = UIActivityViewController(activityItems: activityItems, applicationActivities: nil)
-            
-            // iPad specific configuration
-            if let popover = activityViewController.popoverPresentationController {
+
+            let activityVC = UIActivityViewController(activityItems: activityItems, applicationActivities: nil)
+            // Exclude irrelevant activity types to keep the sheet focused
+            activityVC.excludedActivityTypes = [.assignToContact, .addToReadingList]
+
+            // For iPad: set popover presentation source
+            if let popover = activityVC.popoverPresentationController {
                 popover.sourceView = rootViewController.view
                 popover.sourceRect = CGRect(x: rootViewController.view.bounds.midX, y: rootViewController.view.bounds.midY, width: 0, height: 0)
                 popover.permittedArrowDirections = []
             }
-            
-            rootViewController.present(activityViewController, animated: true, completion: nil)
-            result(nil)
-        } else if let content = arguments["content"] as? String {
-            let urlString = "linkedin://shareArticle?mini=true&url=\(content)"
-            let webUrlString = "https://www.linkedin.com/sharing/share-offsite/?url=\(content)"
+
+            activityVC.completionWithItemsHandler = { _, completed, _, error in
+                if let error = error {
+                    result(FlutterError(code: "SHARE_ERROR", message: error.localizedDescription, details: nil))
+                } else {
+                    result(nil)
+                }
+            }
+
+            rootViewController.present(activityVC, animated: true, completion: nil)
+        }
+        // Text/URL only — use LinkedIn URL scheme directly
+        else if let text = content, !text.isEmpty {
+            let urlString = "linkedin://shareArticle?mini=true&url=\(text)"
+            let webUrlString = "https://www.linkedin.com/sharing/share-offsite/?url=\(text)"
             openUrl(urlString: urlString, webUrlString: webUrlString, result: result, isOpenBrowser: isOpenBrowser)
+        } else {
+            result(FlutterError(code: "NO_CONTENT", message: "No content or media provided for LinkedIn sharing", details: nil))
         }
     }
 
