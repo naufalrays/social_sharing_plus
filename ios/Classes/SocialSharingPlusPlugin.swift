@@ -213,16 +213,39 @@ public class SocialSharingPlusPlugin: NSObject, FlutterPlugin, SharingDelegate {
 
         // If we have an image, use UIActivityViewController (share sheet)
         // because LinkedIn's URL scheme does not support direct image sharing.
+        // We save to a temp JPEG file and pass the file URL, which is more reliable
+        // for LinkedIn's share extension than passing a UIImage object directly.
         if let imagePath = imageUri, !imagePath.isEmpty {
             guard let image = UIImage(contentsOfFile: imagePath) else {
                 result(FlutterError(code: "IMAGE_ERROR", message: "Invalid image path", details: nil))
                 return
             }
 
-            var activityItems: [Any] = [image]
-            if let text = content, !text.isEmpty {
-                activityItems.insert(text, at: 0)
+            // Convert to JPEG data and save to a temp file with a proper extension.
+            // Share extensions identify file types by the URL extension / UTI,
+            // so a file URL is more reliable than an in-memory UIImage.
+            guard let imageData = image.jpegData(compressionQuality: 0.9) else {
+                result(FlutterError(code: "IMAGE_DATA_ERROR", message: "Unable to convert image to JPEG", details: nil))
+                return
             }
+
+            let tempDir = NSTemporaryDirectory()
+            let tempFileName = "linkedin_share_\(Int(Date().timeIntervalSince1970)).jpg"
+            let tempFilePath = (tempDir as NSString).appendingPathComponent(tempFileName)
+            let tempFileURL = URL(fileURLWithPath: tempFilePath)
+
+            do {
+                try imageData.write(to: tempFileURL)
+            } catch {
+                result(FlutterError(code: "FILE_ERROR", message: "Unable to write image to temp file: \(error.localizedDescription)", details: nil))
+                return
+            }
+
+            var activityItems: [Any] = []
+            if let text = content, !text.isEmpty {
+                activityItems.append(text)
+            }
+            activityItems.append(tempFileURL)
 
             guard let rootViewController = UIApplication.shared.windows.first?.rootViewController else {
                 result(FlutterError(code: "NO_ROOT_VIEW_CONTROLLER", message: "No root view controller found", details: nil))
@@ -241,6 +264,9 @@ public class SocialSharingPlusPlugin: NSObject, FlutterPlugin, SharingDelegate {
             }
 
             activityVC.completionWithItemsHandler = { _, completed, _, error in
+                // Clean up temp file
+                try? FileManager.default.removeItem(at: tempFileURL)
+
                 if let error = error {
                     result(FlutterError(code: "SHARE_ERROR", message: error.localizedDescription, details: nil))
                 } else {
