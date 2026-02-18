@@ -208,7 +208,34 @@ public class SocialSharingPlusPlugin: NSObject, FlutterPlugin, SharingDelegate {
     ///   - result: FlutterResult object to complete the call.
     ///   - isOpenBrowser: Flag indicating whether to open in browser if app not installed.
     private func shareToLinkedIn(arguments: [String: Any], result: @escaping FlutterResult, isOpenBrowser: Bool) {
-        if let content = arguments["content"] as? String {
+        if let imageUri = arguments["media"] as? String, !imageUri.isEmpty {
+            guard let image = UIImage(contentsOfFile: imageUri) else {
+                result(FlutterError(code: "IMAGE_ERROR", message: "Invalid image path", details: nil))
+                return
+            }
+            
+            var activityItems: [Any] = [image]
+            if let content = arguments["content"] as? String {
+                activityItems.append(content)
+            }
+            
+            guard let rootViewController = UIApplication.shared.windows.first?.rootViewController else {
+                result(FlutterError(code: "NO_ROOT_VIEW_CONTROLLER", message: "No root view controller found", details: nil))
+                return
+            }
+            
+            let activityViewController = UIActivityViewController(activityItems: activityItems, applicationActivities: nil)
+            
+            // iPad specific configuration
+            if let popover = activityViewController.popoverPresentationController {
+                popover.sourceView = rootViewController.view
+                popover.sourceRect = CGRect(x: rootViewController.view.bounds.midX, y: rootViewController.view.bounds.midY, width: 0, height: 0)
+                popover.permittedArrowDirections = []
+            }
+            
+            rootViewController.present(activityViewController, animated: true, completion: nil)
+            result(nil)
+        } else if let content = arguments["content"] as? String {
             let urlString = "linkedin://shareArticle?mini=true&url=\(content)"
             let webUrlString = "https://www.linkedin.com/sharing/share-offsite/?url=\(content)"
             openUrl(urlString: urlString, webUrlString: webUrlString, result: result, isOpenBrowser: isOpenBrowser)
