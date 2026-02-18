@@ -4,7 +4,6 @@ import Photos
 import FBSDKCoreKit
 import FBSDKShareKit
 import Social
-import LinkPresentation
 import MobileCoreServices
 
 public class SocialSharingPlusPlugin: NSObject, FlutterPlugin, SharingDelegate {
@@ -245,20 +244,16 @@ public class SocialSharingPlusPlugin: NSObject, FlutterPlugin, SharingDelegate {
 
             var activityItems: [Any] = []
             
-            if #available(iOS 13.0, *) {
-                // Use UIActivityItemSource to provide metadata
-                let itemSource = ShareActivityItemSource(title: content, text: content, url: tempFileURL)
-                activityItems.append(itemSource)
-                
-                if let text = content, !text.isEmpty {
-                    activityItems.append(text)
-                }
-            } else {
-                // Fallback for older iOS
-                activityItems.append(tempFileURL)
-                if let text = content, !text.isEmpty {
-                    activityItems.append(text)
-                }
+            // LinkedIn's iOS share extension is very strict.
+            // 1. If we send both [URL, String], it often ignores the image and treats it as a text post (or vice versa).
+            // 2. If we use UIActivityItemSource with metadata, the LinkedIn option often disappears entirely (activation rule mismatch).
+            //
+            // Best workaround: Share ONLY the image file URL so LinkedIn treats it as a photo post.
+            // Copy the text to clipboard so the user can paste it.
+            activityItems.append(tempFileURL)
+            
+            if let text = content, !text.isEmpty {
+                UIPasteboard.general.string = text
             }
 
             guard let rootViewController = UIApplication.shared.windows.first?.rootViewController else {
@@ -293,48 +288,6 @@ public class SocialSharingPlusPlugin: NSObject, FlutterPlugin, SharingDelegate {
             openUrl(urlString: urlString, webUrlString: webUrlString, result: result, isOpenBrowser: isOpenBrowser)
         } else {
             result(FlutterError(code: "NO_CONTENT", message: "No content or media provided for LinkedIn sharing", details: nil))
-        }
-    }
-
-    @available(iOS 13.0, *)
-    class ShareActivityItemSource: NSObject, UIActivityItemSource {
-        let title: String?
-        let text: String?
-        let url: URL
-        
-        init(title: String?, text: String?, url: URL) {
-            self.title = title
-            self.text = text
-            self.url = url
-            super.init()
-        }
-        
-        func activityViewControllerPlaceholderItem(_ activityViewController: UIActivityViewController) -> Any {
-            return url
-        }
-        
-        func activityViewController(_ activityViewController: UIActivityViewController, itemForActivityType activityType: UIActivity.ActivityType?) -> Any? {
-            // Some apps prefer the URL, others might want text + URL if we return a custom object?
-            // Usually returning the URL is best for image/file sharing.
-            return url
-            
-            // Note: We can return different items based on activityType.
-            // For LinkedIn, returning the file URL is critical for image post.
-            // The text is handled by LPLinkMetadata or if we had a separate source for text.
-            
-            // Wait, if we want BOTH text and image, we need TWO sources or items in activityItems.
-            // One for image, one for text.
-            // My implementation above puts only ONE itemSource in activityItems.
-        }
-        
-        func activityViewControllerLinkMetadata(_ activityViewController: UIActivityViewController) -> LPLinkMetadata? {
-            let metadata = LPLinkMetadata()
-            metadata.title = title ?? "Share"
-            // We can load the icon from the URL
-            metadata.iconProvider = NSItemProvider(contentsOf: url)
-            // We can also set originalURL
-            metadata.originalURL = url
-            return metadata
         }
     }
 
