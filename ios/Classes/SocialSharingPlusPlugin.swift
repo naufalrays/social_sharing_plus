@@ -203,6 +203,10 @@ public class SocialSharingPlusPlugin: NSObject, FlutterPlugin, SharingDelegate {
 
     /// Shares content to LinkedIn.
     ///
+    /// LinkedIn's iOS share extension does not reliably accept images from UIActivityViewController.
+    /// Instead, we save the image to the camera roll and open LinkedIn, so the user can attach it
+    /// from their recent photos when composing a post. Text is copied to the clipboard for pasting.
+    ///
     /// - Parameters:
     ///   - arguments: Arguments dictionary containing content and media URIs.
     ///   - result: FlutterResult object to complete the call.
@@ -211,48 +215,37 @@ public class SocialSharingPlusPlugin: NSObject, FlutterPlugin, SharingDelegate {
         let content = arguments["content"] as? String
         let imageUri = arguments["media"] as? String
 
-        // If we have an image, use UIActivityViewController (share sheet)
+        // If we have an image, save to camera roll and open LinkedIn
         if let imagePath = imageUri, !imagePath.isEmpty {
-            guard let image = UIImage(contentsOfFile: imagePath) else {
-                result(FlutterError(code: "IMAGE_ERROR", message: "Invalid image path", details: nil))
-                return
-            }
+            let fileUrl = URL(fileURLWithPath: imagePath)
 
-            guard let rootViewController = UIApplication.shared.windows.first?.rootViewController else {
-                result(FlutterError(code: "NO_ROOT_VIEW_CONTROLLER", message: "No root view controller found", details: nil))
-                return
-            }
-
-            // Build activity items: text first (if available), then the UIImage.
-            // LinkedIn's share extension expects UIImage, not raw Data.
-            var activityItems: [Any] = []
-
+            // Copy text to clipboard so user can paste it when composing the post
             if let text = content, !text.isEmpty {
-                activityItems.append(text)
-                // Also copy text to clipboard so the user can paste it as a fallback.
                 UIPasteboard.general.string = text
             }
 
-            activityItems.append(image)
-
-            let activityVC = UIActivityViewController(activityItems: activityItems, applicationActivities: nil)
-            activityVC.excludedActivityTypes = [.assignToContact, .addToReadingList]
-
-            if let popover = activityVC.popoverPresentationController {
-                popover.sourceView = rootViewController.view
-                popover.sourceRect = CGRect(x: rootViewController.view.bounds.midX, y: rootViewController.view.bounds.midY, width: 0, height: 0)
-                popover.permittedArrowDirections = []
-            }
-
-            activityVC.completionWithItemsHandler = { _, completed, _, error in
-                if let error = error {
-                    result(FlutterError(code: "SHARE_ERROR", message: error.localizedDescription, details: nil))
-                } else {
-                    result(nil)
+            // Save image to photo library, then open LinkedIn
+            saveMediaToPhotoLibrary(fileUrl: fileUrl, isVideo: false) { success in
+                DispatchQueue.main.async {
+                    if success {
+                        // Try to open LinkedIn app
+                        let linkedinUrl = "linkedin://"
+                        if let url = URL(string: linkedinUrl), UIApplication.shared.canOpenURL(url) {
+                            UIApplication.shared.open(url, options: [:], completionHandler: nil)
+                            result(nil)
+                        } else if isOpenBrowser {
+                            if let webUrl = URL(string: "https://www.linkedin.com/") {
+                                UIApplication.shared.open(webUrl, options: [:], completionHandler: nil)
+                            }
+                            result(nil)
+                        } else {
+                            result(FlutterError(code: "APP_NOT_INSTALLED", message: "LinkedIn is not installed", details: nil))
+                        }
+                    } else {
+                        result(FlutterError(code: "SAVE_ERROR", message: "Failed to save image to photo library", details: nil))
+                    }
                 }
             }
-
-            rootViewController.present(activityVC, animated: true, completion: nil)
         }
         // Text/URL only — use LinkedIn URL scheme directly
         else if let text = content, !text.isEmpty {
