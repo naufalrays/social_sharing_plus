@@ -207,12 +207,6 @@ public class SocialSharingPlusPlugin: NSObject, FlutterPlugin, SharingDelegate {
     ///   - arguments: Arguments dictionary containing content and media URIs.
     ///   - result: FlutterResult object to complete the call.
     ///   - isOpenBrowser: Flag indicating whether to open in browser if app not installed.
-    /// Shares content to LinkedIn.
-    ///
-    /// - Parameters:
-    ///   - arguments: Arguments dictionary containing content and media URIs.
-    ///   - result: FlutterResult object to complete the call.
-    ///   - isOpenBrowser: Flag indicating whether to open in browser if app not installed.
     private func shareToLinkedIn(arguments: [String: Any], result: @escaping FlutterResult, isOpenBrowser: Bool) {
         let content = arguments["content"] as? String
         let imageUri = arguments["media"] as? String
@@ -224,40 +218,23 @@ public class SocialSharingPlusPlugin: NSObject, FlutterPlugin, SharingDelegate {
                 return
             }
 
-            // Convert to JPEG data and save to a temp file with a proper extension.
-            guard let imageData = image.jpegData(compressionQuality: 0.9) else {
-                result(FlutterError(code: "IMAGE_DATA_ERROR", message: "Unable to convert image to JPEG", details: nil))
-                return
-            }
-
-            let tempDir = NSTemporaryDirectory()
-            let tempFileName = "linkedin_share_\(Int(Date().timeIntervalSince1970)).jpg"
-            let tempFilePath = (tempDir as NSString).appendingPathComponent(tempFileName)
-            let tempFileURL = URL(fileURLWithPath: tempFilePath)
-
-            do {
-                try imageData.write(to: tempFileURL)
-            } catch {
-                result(FlutterError(code: "FILE_ERROR", message: "Unable to write image to temp file: \(error.localizedDescription)", details: nil))
-                return
-            }
-
-            var activityItems: [Any] = []
-            
-            // Copy text to clipboard so the user can paste it.
-            if let text = content, !text.isEmpty {
-                UIPasteboard.general.string = text
-            }
-
             guard let rootViewController = UIApplication.shared.windows.first?.rootViewController else {
                 result(FlutterError(code: "NO_ROOT_VIEW_CONTROLLER", message: "No root view controller found", details: nil))
                 return
             }
 
-            // LinkedIn's iOS share extension often fails with file URLs and UIDocumentInteractionController.
-            // Try sharing the raw image Data directly. This bypasses file system issues.
-            var activityItems: [Any] = [imageData]
-            
+            // Build activity items: text first (if available), then the UIImage.
+            // LinkedIn's share extension expects UIImage, not raw Data.
+            var activityItems: [Any] = []
+
+            if let text = content, !text.isEmpty {
+                activityItems.append(text)
+                // Also copy text to clipboard so the user can paste it as a fallback.
+                UIPasteboard.general.string = text
+            }
+
+            activityItems.append(image)
+
             let activityVC = UIActivityViewController(activityItems: activityItems, applicationActivities: nil)
             activityVC.excludedActivityTypes = [.assignToContact, .addToReadingList]
 
@@ -268,9 +245,6 @@ public class SocialSharingPlusPlugin: NSObject, FlutterPlugin, SharingDelegate {
             }
 
             activityVC.completionWithItemsHandler = { _, completed, _, error in
-                // Clean up temp file (which we created from the image data)
-                try? FileManager.default.removeItem(at: tempFileURL)
-                
                 if let error = error {
                     result(FlutterError(code: "SHARE_ERROR", message: error.localizedDescription, details: nil))
                 } else {
@@ -279,7 +253,6 @@ public class SocialSharingPlusPlugin: NSObject, FlutterPlugin, SharingDelegate {
             }
 
             rootViewController.present(activityVC, animated: true, completion: nil)
-        }
         }
         // Text/URL only — use LinkedIn URL scheme directly
         else if let text = content, !text.isEmpty {
